@@ -8,7 +8,7 @@ from huggingface_hub import HfApi
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
-# Cargar variables de entorno configuradas en Secrets
+# Cargar variables de entorno configuradas en Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
@@ -16,18 +16,20 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO")
 HF_TOKEN = os.environ.get("HF_TOKEN")
 HF_DATASET = os.environ.get("HF_DATASET")
 
-# Carpeta por defecto en Hugging Face
+# Carpeta por defecto en Hugging Face Dataset
 CARPETA_ACTUAL = "peliculas"
 
-# --- 1. SERVIDOR WEB PARA MANTENER VIVO EL SPACE ---
+# --- 1. SERVIDOR WEB PARA RENDER ---
 web_app = Flask(__name__)
 
 @web_app.route("/")
 def home():
-    return "Bot y Worker activos correctamente."
+    return "Bot y Worker activos correctamente en Render."
 
 def run_web():
-    web_app.run(host="0.0.0.0", port=7860)
+    # Render asigna el puerto automáticamente mediante os.environ.get("PORT")
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
 
 # --- 2. WORKER QUE LEE GITHUB, DESCARGA Y NOTIFICA A TELEGRAM ---
 def worker_descargas():
@@ -48,7 +50,6 @@ def worker_descargas():
                 restantes = "\n".join(lines[1:])
 
                 partes = tarea.split("|")
-                # Soporte para versiones anteriores sin chat_id o con chat_id
                 if len(partes) >= 4:
                     chat_id = int(partes[0])
                     carpeta = partes[1]
@@ -84,7 +85,7 @@ def worker_descargas():
                     repo_type="dataset"
                 )
 
-                # Borrar archivo temporal del Space para no llenar la memoria
+                # Borrar archivo temporal del servidor
                 os.remove(ruta_local)
                 print(f"✅ Completado: {ruta_en_hf}")
 
@@ -154,7 +155,6 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     chat_id = update.effective_chat.id
 
-    # Caso A: El usuario envía un enlace directo
     if update.message.text and update.message.text.startswith("http"):
         partes = update.message.text.split()
         url = partes[0].strip()
@@ -168,11 +168,10 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"✅ **En cola de descarga**\n"
             f"📁 Carpeta destino: `{CARPETA_ACTUAL}`\n"
             f"🎬 Archivo: `{nombre}`\n\n"
-            f"Te avisaré por aquí en cuanto termine de subirlo a Hugging Face.",
+            f"Te avisaré por aquí en cuanto termine de subirlo.",
             parse_mode="Markdown"
         )
 
-    # Caso B: El usuario reenvía o sube un archivo MP4 directo al bot
     elif update.message.video or update.message.document:
         archivo = update.message.video or update.message.document
         nombre = archivo.file_name or f"video_{int(time.time())}.mp4"
