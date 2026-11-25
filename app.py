@@ -6,9 +6,16 @@ from flask import Flask
 from github import Github
 from huggingface_hub import HfApi
 from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    MessageHandler,
+    CommandHandler,
+    ConversationHandler,
+    filters
+)
 
-# Cargar variables con los nombres exactos de tu panel de Render
+# Cargar variables de entorno de Render
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if _admin_raw.isdigit() else 0
@@ -18,7 +25,8 @@ GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 HF_DATASET = os.environ.get("HF_DATASET_REPO", "")
 
-CARPETA_ACTUAL = "peliculas"
+# Estados para la conversación interactiva
+ESPERANDO_CARPETA, ESPERANDO_NOMBRE = range(2)
 
 # --- 1. SERVIDOR WEB PARA RENDER ---
 web_app = Flask(__name__)
@@ -122,7 +130,7 @@ def worker_descargas():
         
         time.sleep(15)
 
-# --- 3. BOT DE TELEGRAM ---
+# --- 3. BOT DE TELEGRAM (FLUJO INTERACTIVO) ---
 def agregar_a_github(chat_id, carpeta, url, nombre_archivo):
     g = Github(GITHUB_TOKEN)
     repo = g.get_repo(GITHUB_REPO)
@@ -136,68 +144,88 @@ def agregar_a_github(chat_id, carpeta, url, nombre_archivo):
     except Exception:
         repo.create_file("queue.txt", f"Crear cola con {nombre_archivo}", nueva_linea)
 
-async def cmd_carpeta(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global CARPETA_ACTUAL
+async def iniciar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
-    if not context.args:
-        await update.message.reply_text(f"📁 Carpeta actual: `{CARPETA_ACTUAL}`\n\nPara cambiarla escribe: `/carpeta series`", parse_mode="Markdown")
-        return
-    CARPETA_ACTUAL = context.args[0].strip().replace("/", "_")
-    await update.message.reply_text(f"✅ Carpeta cambiada a: `{CARPETA_ACTUAL}`", parse_mode="Markdown")
+        return ConversationHandler.END
 
-async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    texto = update.message.text.strip()
+    if not texto.startswith("http"):
+        await update.message.reply_text("⚠️ Por favor, envíame un enlace válido que empiece por http.")
+        return ConversationHandler.END
+
+    # Guardar el enlace temporalmente en el contexto del usuario
+    context.user_data['url_video'] = texto.split()[0]
+    
+    await update.message.reply_text(
+        "📁 **¿En qué carpeta deseas guardar este video?**\n"
+        "(Ejemplo: `peliculas`, `series`, `anime`, `doramas`):",
+        parse_mode="Markdown"
+    )
+    return ESPERANDO_CARPETA
+
+async def recibir_carpeta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        return
+        return ConversationHandler.END
+
+    carpeta = update.message.text.strip().replace("/", "_")
+    context.user_data['carpeta'] = carpeta
+
+    await update.message.reply_text(
+        f"✅ Carpeta seleccionada: `{carpeta}`\n\n"
+        "🎬 **¿Qué nombre quieres ponerle al archivo final?**\n"
+        "(Ejemplo: `capitulo_01.mp4` o `pelicula_completa.mp4`):",
+        parse_mode="Markdown"
+    )
+    return ESPERANDO_NOMBRE
+
+async def recibir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return ConversationHandler.END
+
+    nombre_archivo = update.message.text.strip()
+    if not nombre_archivo.endswith(".mp4"):
+        nombre_archivo += ".mp4"
 
     chat_id = update.effective_chat.id
+    url = context.user_data.get('url_video')
+    carpeta = context.user_data.get('carpeta', 'peliculas')
 
-    if update.message.text and update.message.text.startswith("http"):
-        partes = update.message.text.split()
-        url = partes[0].strip()
-        nombre = partes[1].strip() if len(partes) > 1 else url.split("/")[-1].split("?")[0]
-        if not nombre:
-            nombre = f"video_{int(time.time())}.mp4"
-            
-        await update.message.reply_text("⏳ Enviando enlace a GitHub y procesando descarga...")
-        agregar_a_github(chat_id, CARPETA_ACTUAL, url, nombre)
-        await update.message.reply_text(
-            f"✅ **En cola de descarga**\n"
-            f"📁 Carpeta destino: `{CARPETA_ACTUAL}`\n"
-            f"🎬 Archivo: `{nombre}`\n\n"
-            f"Te avisaré por aquí en cuanto termine de subirlo.",
-            parse_mode="Markdown"
-        )
+    await update.message.reply_text("⏳ Añadiendo tarea a la cola de GitHub...")
+    agregar_a_github(chat_id, carpeta, url, nombre_archivo)
 
-    elif update.message.video or update.message.document:
-        archivo = update.message.video or update.message.document
-        nombre = archivo.file_name or f"video_{int(time.time())}.mp4"
-        try:
-            tg_file = await context.bot.get_file(archivo.file_id)
-            url_directa = tg_file.file_path
-            agregar_a_github(chat_id, CARPETA_ACTUAL, url_directa, nombre)
-            await update.message.reply_text(
-                f"✅ **Video en cola**\n"
-                f"📁 Carpeta destino: `{CARPETA_ACTUAL}`\n"
-                f"🎬 Archivo: `{nombre}`\n\n"
-                f"Te avisaré cuando esté listo.",
-                parse_mode="Markdown"
-            )
-        except Exception as e:
-            await update.message.reply_text(
-                f"⚠️ Telegram limita los archivos reenviados directamente al bot a 20 MB.\n"
-                f"Para archivos grandes, envíame el enlace directo de descarga.\n(Detalle: {e})"
-            )
+    await update.message.reply_text(
+        f"✅ **¡Todo configurado con éxito!**\n"
+        f"📁 Carpeta: `{carpeta}`\n"
+        f"🎬 Archivo: `{nombre_archivo}`\n\n"
+        f"El servidor lo descargará y te avisará cuando esté listo.",
+        parse_mode="Markdown"
+    )
+    return ConversationHandler.END
+
+async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("❌ Operación cancelada.")
+    return ConversationHandler.END
 
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or ADMIN_ID == 0:
         print("❌ ERROR CRÍTICO: TELEGRAM_BOT_TOKEN o ADMIN_ID no están configurados en Render.")
     
+    # Iniciar servicios en segundo plano
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=worker_descargas, daemon=True).start()
     
-    print("🚀 Iniciando Bot de Telegram...")
+    print("🚀 Iniciando Bot de Telegram interactivo...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("carpeta", cmd_carpeta))
-    app.add_handler(MessageHandler((filters.TEXT | filters.VIDEO | filters.Document.ALL) & (~filters.COMMAND), manejar_mensaje))
+    
+    # Manejador de conversación paso a paso
+    conv_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^http"), iniciar_conversacion)],
+        states={
+            ESPERANDO_CARPETA: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_carpeta)],
+            ESPERANDO_NOMBRE: [MessageHandler(filters.TEXT & ~filters.COMMAND, recibir_nombre)],
+        },
+        fallbacks=[CommandHandler("cancelar", cancelar)],
+    )
+
+    app.add_handler(conv_handler)
     app.run_polling()
