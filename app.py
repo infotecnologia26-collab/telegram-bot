@@ -15,15 +15,13 @@ from telegram.ext import (
     filters
 )
 
-# --- CONFIGURACIÓN SEGURA ---
+# --- CONFIGURACIÓN ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN", "")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-# Si prefieres asegurarlo, puedes pegar tu token de GitHub aquí entre las comillas como respaldo:
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "TU_GITHUB_TOKEN_AQUI_SI_LO_DESEAS")
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
-
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 BASE_HF_REPO = os.environ.get("HF_DATASET_REPO", "Samas21/bot")
 HF_USER = BASE_HF_REPO.split("/")[0] if "/" in BASE_HF_REPO else "Samas21"
@@ -89,7 +87,6 @@ def worker_descargas():
                                 f.write(chunk)
 
                 repo_id_destino = f"{HF_USER}/{destino_repo}"
-                
                 print(f"☁️ Subiendo a Hugging Face ({repo_id_destino})...")
                 hf_api.upload_file(
                     path_or_fileobj=ruta_local,
@@ -229,6 +226,7 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 if __name__ == "__main__":
+    # Iniciar Flask y el worker de descargas en segundo plano
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=worker_descargas, daemon=True).start()
     
