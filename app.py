@@ -144,6 +144,15 @@ def agregar_a_github(chat_id, carpeta, url, nombre_archivo):
     except Exception:
         repo.create_file("queue.txt", f"Crear cola con {nombre_archivo}", nueva_linea)
 
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    await update.message.reply_text(
+        "👋 ¡Hola Admin! El bot está activo y listo.\n\n"
+        "🎬 **Envíame un enlace de video (http...)** para comenzar a configurarlo paso a paso.",
+        parse_mode="Markdown"
+    )
+
 async def iniciar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return ConversationHandler.END
@@ -153,7 +162,6 @@ async def iniciar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text("⚠️ Por favor, envíame un enlace válido que empiece por http.")
         return ConversationHandler.END
 
-    # Guardar el enlace temporalmente en el contexto del usuario
     context.user_data['url_video'] = texto.split()[0]
     
     await update.message.reply_text(
@@ -173,7 +181,7 @@ async def recibir_carpeta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Carpeta seleccionada: `{carpeta}`\n\n"
         "🎬 **¿Qué nombre quieres ponerle al archivo final?**\n"
-        "(Ejemplo: `capitulo_01.mp4` o `pelicula_completa.mp4`):",
+        "(Ejemplo: `capitulo_01.mp4` o `pelicula.mp4`):",
         parse_mode="Markdown"
     )
     return ESPERANDO_NOMBRE
@@ -210,14 +218,12 @@ if __name__ == "__main__":
     if not TELEGRAM_TOKEN or ADMIN_ID == 0:
         print("❌ ERROR CRÍTICO: TELEGRAM_BOT_TOKEN o ADMIN_ID no están configurados en Render.")
     
-    # Iniciar servicios en segundo plano
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=worker_descargas, daemon=True).start()
     
     print("🚀 Iniciando Bot de Telegram interactivo...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
-    # Manejador de conversación paso a paso
     conv_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND & filters.Regex("^http"), iniciar_conversacion)],
         states={
@@ -227,5 +233,6 @@ if __name__ == "__main__":
         fallbacks=[CommandHandler("cancelar", cancelar)],
     )
 
+    app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(conv_handler)
     app.run_polling()
