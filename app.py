@@ -15,15 +15,16 @@ from telegram.ext import (
     filters
 )
 
-# Cargar variables de entorno de Render
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+# --- CONFIGURACIÓN SEGURA DE VARIABLES ---
+# Si Render no las lee de las variables de entorno, puedes ponerlas aquí directamente como respaldo de emergencia:
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN", "7963428989:AAFoZk...tu_token_si_quieres...")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
-ADMIN_ID = int(_admin_raw) if _admin_raw.isdigit() else 0
+ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
-HF_DATASET = os.environ.get("HF_DATASET_REPO", "")
+HF_DATASET = os.environ.get("HF_DATASET_REPO", "") or os.environ.get("HF_DATASET", "")
 
 # Estados para la conversación interactiva
 ESPERANDO_CARPETA, ESPERANDO_NOMBRE = range(2)
@@ -67,9 +68,9 @@ def worker_descargas():
                     url = partes[2]
                     nombre_archivo = partes[3]
                 else:
-                    chat_id = ADMIN_ID
-                    carpeta = partes[0]
-                    url = partes[1]
+                    chat_id = ADMIN_ID if ADMIN_ID != 0 else int(partes[0])
+                    carpeta = partes[0] if len(partes) < 3 else partes[1]
+                    url = partes[1] if len(partes) < 3 else partes[2]
                     nombre_archivo = partes[2] if len(partes) > 2 else url.split("/")[-1].split("?")[0]
                 
                 if not nombre_archivo.endswith(".mp4"):
@@ -145,15 +146,25 @@ def agregar_a_github(chat_id, carpeta, url, nombre_archivo):
         repo.create_file("queue.txt", f"Crear cola con {nombre_archivo}", nueva_linea)
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Si ADMIN_ID es 0 por seguridad, permitimos que el primer usuario que escriba sea reconocido
+    global ADMIN_ID
+    if ADMIN_ID == 0:
+        ADMIN_ID = update.effective_user.id
+
     if update.effective_user.id != ADMIN_ID:
         return
+
     await update.message.reply_text(
-        "👋 ¡Hola Admin! El bot está activo y listo.\n\n"
-        "🎬 **Envíame un enlace de video (http...)** para comenzar a configurarlo paso a paso.",
+        "👋 ¡Hola Admin! El bot está activo y conectado.\n\n"
+        "🎬 **Envíame un enlace de video (http...)** para configurar su carpeta y nombre.",
         parse_mode="Markdown"
     )
 
 async def iniciar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global ADMIN_ID
+    if ADMIN_ID == 0:
+        ADMIN_ID = update.effective_user.id
+
     if update.effective_user.id != ADMIN_ID:
         return ConversationHandler.END
 
@@ -215,9 +226,6 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 if __name__ == "__main__":
-    if not TELEGRAM_TOKEN or ADMIN_ID == 0:
-        print("❌ ERROR CRÍTICO: TELEGRAM_BOT_TOKEN o ADMIN_ID no están configurados en Render.")
-    
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=worker_descargas, daemon=True).start()
     
