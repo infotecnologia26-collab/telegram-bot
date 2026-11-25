@@ -8,15 +8,16 @@ from huggingface_hub import HfApi
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
-# Cargar variables de entorno configuradas en Render
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-ADMIN_ID = int(os.environ.get("ADMIN_ID", "0"))
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
-GITHUB_REPO = os.environ.get("GITHUB_REPO")
-HF_TOKEN = os.environ.get("HF_TOKEN")
-HF_DATASET = os.environ.get("HF_DATASET")
+# Cargar y validar variables de entorno de forma segura
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+_admin_raw = os.environ.get("ADMIN_ID", "0")
+ADMIN_ID = int(_admin_raw) if _admin_raw.isdigit() else 0
 
-# Carpeta por defecto en Hugging Face Dataset
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
+HF_DATASET = os.environ.get("HF_DATASET", "")
+
 CARPETA_ACTUAL = "peliculas"
 
 # --- 1. SERVIDOR WEB PARA RENDER ---
@@ -27,12 +28,15 @@ def home():
     return "Bot y Worker activos correctamente en Render."
 
 def run_web():
-    # Render asigna el puerto automáticamente mediante os.environ.get("PORT")
     port = int(os.environ.get("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
 
 # --- 2. WORKER QUE LEE GITHUB, DESCARGA Y NOTIFICA A TELEGRAM ---
 def worker_descargas():
+    if not GITHUB_TOKEN or not GITHUB_REPO or not HF_TOKEN or not HF_DATASET:
+        print("⚠️ Faltan variables de entorno de GitHub o Hugging Face en Render.")
+        return
+
     g = Github(GITHUB_TOKEN)
     repo = g.get_repo(GITHUB_REPO)
     hf_api = HfApi(token=HF_TOKEN)
@@ -45,7 +49,6 @@ def worker_descargas():
             
             if content:
                 lines = content.splitlines()
-                # Formato esperado en queue.txt: chat_id|carpeta|url|nombre_archivo
                 tarea = lines[0].strip()
                 restantes = "\n".join(lines[1:])
 
@@ -67,7 +70,6 @@ def worker_descargas():
                 ruta_local = os.path.join("temp_downloads", nombre_archivo)
                 print(f"📥 Descargando {nombre_archivo} para la carpeta '{carpeta}'...")
 
-                # Descargar archivo por partes (soporta archivos pesados)
                 with requests.get(url, stream=True, timeout=60) as r:
                     r.raise_for_status()
                     with open(ruta_local, "wb") as f:
@@ -75,7 +77,6 @@ def worker_descargas():
                             if chunk:
                                 f.write(chunk)
 
-                # Subir el archivo descargado a la carpeta elegida en el Dataset de Hugging Face
                 ruta_en_hf = f"{carpeta}/{nombre_archivo}"
                 print(f"☁️ Subiendo a Hugging Face: {ruta_en_hf}...")
                 hf_api.upload_file(
@@ -85,11 +86,9 @@ def worker_descargas():
                     repo_type="dataset"
                 )
 
-                # Borrar archivo temporal del servidor
                 os.remove(ruta_local)
                 print(f"✅ Completado: {ruta_en_hf}")
 
-                # Generar enlace directo y código HTML para Blogger
                 enlace_directo = f"https://huggingface.co/datasets/{HF_DATASET}/resolve/main/{carpeta}/{nombre_archivo}?token={HF_TOKEN}"
                 codigo_html = (
                     f'<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; border-radius: 8px;">\n'
@@ -100,7 +99,6 @@ def worker_descargas():
                     f'</div>'
                 )
 
-                # Enviar notificación a Telegram con el código listo
                 try:
                     requests.post(
                         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
@@ -113,7 +111,6 @@ def worker_descargas():
                 except Exception as e:
                     print(f"No se pudo enviar la notificación a Telegram: {e}")
 
-                # Actualizar o borrar queue.txt en GitHub
                 if restantes.strip():
                     repo.update_file(file.path, f"Procesado {nombre_archivo}", restantes, file.sha)
                 else:
@@ -193,12 +190,13 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 if __name__ == "__main__":
-    # Iniciar servidor web en segundo plano
+    if not TELEGRAM_TOKEN or ADMIN_ID == 0:
+        print("❌ ERROR CRÍTICO: TELEGRAM_TOKEN o ADMIN_ID no están configurados en Render.")
+    
     threading.Thread(target=run_web, daemon=True).start()
-    # Iniciar worker de descargas en segundo plano
+    threading.Thread(target=worker_descargas, daemon=True).subdaemon = True if hasattr(threading.Thread, 'subdaemon') else None
     threading.Thread(target=worker_descargas, daemon=True).start()
     
-    # Iniciar Bot de Telegram
     print("🚀 Iniciando Bot de Telegram...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(CommandHandler("carpeta", cmd_carpeta))
