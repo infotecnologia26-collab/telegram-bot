@@ -15,16 +15,16 @@ from telegram.ext import (
     filters
 )
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN SEGURA ---
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN", "")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+# Si prefieres asegurarlo, puedes pegar tu token de GitHub aquí entre las comillas como respaldo:
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "TU_GITHUB_TOKEN_AQUI_SI_LO_DESEAS")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
 
-# Extraer tu usuario de Hugging Face de la variable configurada (ej: "Samas21")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 BASE_HF_REPO = os.environ.get("HF_DATASET_REPO", "Samas21/bot")
 HF_USER = BASE_HF_REPO.split("/")[0] if "/" in BASE_HF_REPO else "Samas21"
 
@@ -42,7 +42,7 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
 
-# --- 2. WORKER QUE LEE GITHUB, DESCARGA Y SUBE A HUFFING FACE ---
+# --- 2. WORKER QUE LEE GITHUB, DESCARGA Y SUBE A HUGGING FACE ---
 def worker_descargas():
     if not GITHUB_TOKEN or not GITHUB_REPO or not HF_TOKEN:
         print("⚠️ Faltan variables de entorno de GitHub o Hugging Face en Render.")
@@ -66,7 +66,7 @@ def worker_descargas():
                 partes = tarea.split("|")
                 if len(partes) >= 4:
                     chat_id = int(partes[0])
-                    destino_repo = partes[1].strip() # Ej: P311 o bêt
+                    destino_repo = partes[1].strip()
                     url = partes[2]
                     nombre_archivo = partes[3]
                 else:
@@ -88,13 +88,12 @@ def worker_descargas():
                             if chunk:
                                 f.write(chunk)
 
-                # Definir el repositorio exacto en Hugging Face (ej: Samas21/P311)
                 repo_id_destino = f"{HF_USER}/{destino_repo}"
                 
                 print(f"☁️ Subiendo a Hugging Face ({repo_id_destino})...")
                 hf_api.upload_file(
                     path_or_fileobj=ruta_local,
-                    path_in_repo=nombre_archivo, # Se sube a la raíz de ese repositorio
+                    path_in_repo=nombre_archivo,
                     repo_id=repo_id_destino,
                     repo_type="dataset"
                 )
@@ -102,7 +101,6 @@ def worker_descargas():
                 os.remove(ruta_local)
                 print(f"✅ Completado en {repo_id_destino}")
 
-                # Enlace directo optimizado para Blogger
                 enlace_directo = f"https://huggingface.co/datasets/{repo_id_destino}/resolve/main/{nombre_archivo}?token={HF_TOKEN}"
                 codigo_html = (
                     f'<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; border-radius: 8px;">\n'
