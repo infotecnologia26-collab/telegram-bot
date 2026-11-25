@@ -15,14 +15,17 @@ from telegram.ext import (
     filters
 )
 
-# --- CONFIGURACIÓN ---
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN", "")
+# --- CONFIGURACIÓN BLINDADA (PEGA TUS TOKENS AQUÍ) ---
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "TU_TOKEN_DE_TELEGRAM")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+# Pega tu token de GitHub aquí para evitar errores en Render
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "TU_TOKEN_DE_GITHUB")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
-HF_TOKEN = os.environ.get("HF_TOKEN", "")
+
+# Pega tu token de Hugging Face aquí
+HF_TOKEN = os.environ.get("HF_TOKEN", "TU_TOKEN_DE_HUGGINGFACE")
 BASE_HF_REPO = os.environ.get("HF_DATASET_REPO", "Samas21/bot")
 HF_USER = BASE_HF_REPO.split("/")[0] if "/" in BASE_HF_REPO else "Samas21"
 
@@ -40,10 +43,10 @@ def run_web():
     port = int(os.environ.get("PORT", 10000))
     web_app.run(host="0.0.0.0", port=port)
 
-# --- 2. WORKER QUE LEE GITHUB, DESCARGA Y SUBE A HUGGING FACE ---
+# --- 2. WORKER QUE DESCARGA Y SUBE ARCHIVOS PESADOS A HUGGING FACE ---
 def worker_descargas():
-    if not GITHUB_TOKEN or not GITHUB_REPO or not HF_TOKEN:
-        print("⚠️ Faltan variables de entorno de GitHub o Hugging Face en Render.")
+    if not GITHUB_TOKEN or not HF_TOKEN:
+        print("⚠️ Faltan tokens de GitHub o Hugging Face.")
         return
 
     g = Github(GITHUB_TOKEN)
@@ -77,9 +80,10 @@ def worker_descargas():
                     nombre_archivo += ".mp4"
 
                 ruta_local = os.path.join("temp_downloads", nombre_archivo)
-                print(f"📥 Descargando {nombre_archivo} para el dataset '{HF_USER}/{destino_repo}'...")
+                print(f"📥 Descargando archivo pesado para '{HF_USER}/{destino_repo}'...")
 
-                with requests.get(url, stream=True, timeout=60) as r:
+                # Descarga robusta con streaming para archivos grandes (3.4 GB+)
+                with requests.get(url, stream=True, timeout=120) as r:
                     r.raise_for_status()
                     with open(ruta_local, "wb") as f:
                         for chunk in r.iter_content(chunk_size=1024 * 1024):
@@ -87,7 +91,9 @@ def worker_descargas():
                                 f.write(chunk)
 
                 repo_id_destino = f"{HF_USER}/{destino_repo}"
-                print(f"☁️ Subiendo a Hugging Face ({repo_id_destino})...")
+                print(f"☁️ Subiendo archivo pesado a Hugging Face ({repo_id_destino})...")
+                
+                # Subida oficial compatible con Hugging Face Hub
                 hf_api.upload_file(
                     path_or_fileobj=ruta_local,
                     path_in_repo=nombre_archivo,
@@ -96,8 +102,9 @@ def worker_descargas():
                 )
 
                 os.remove(ruta_local)
-                print(f"✅ Completado en {repo_id_destino}")
+                print(f"✅ ¡Subida completada en {repo_id_destino}!")
 
+                # Generar HTML para Blogger
                 enlace_directo = f"https://huggingface.co/datasets/{repo_id_destino}/resolve/main/{nombre_archivo}?token={HF_TOKEN}"
                 codigo_html = (
                     f'<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; border-radius: 8px;">\n'
@@ -113,7 +120,7 @@ def worker_descargas():
                         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
                         json={
                             "chat_id": chat_id,
-                            "text": f"🎉 **¡Video subido con éxito!**\n\n📦 **Dataset:** `{repo_id_destino}`\n🎬 **Archivo:** `{nombre_archivo}`\n\n📋 **Copia este código para tu Blogger:**\n```html\n{codigo_html}\n```",
+                            "text": f"🎉 **¡Video de 3.4 GB subido con éxito!**\n\n📦 **Dataset:** `{repo_id_destino}`\n🎬 **Archivo:** `{nombre_archivo}`\n\n📋 **Copia este código para tu Blogger:**\n```html\n{codigo_html}\n```",
                             "parse_mode": "Markdown"
                         }
                     )
@@ -127,7 +134,7 @@ def worker_descargas():
 
         except Exception as e:
             if "404" not in str(e):
-                print(f"⏳ Esperando tareas o revisando estado: {e}")
+                print(f"⏳ Procesando o esperando cola: {e}")
         
         time.sleep(15)
 
@@ -154,7 +161,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_text(
-        "👋 ¡Hola Admin! Bot conectado.\n\n"
+        "👋 ¡Hola Admin! Bot listo para procesar archivos pesados.\n\n"
         "🎬 **Envíame un enlace de video (http...)** para elegir a qué repositorio de Hugging Face enviarlo.",
         parse_mode="Markdown"
     )
@@ -176,7 +183,7 @@ async def iniciar_conversacion(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await update.message.reply_text(
         f"📦 **¿A qué repositorio de Hugging Face quieres subirlo?**\n"
-        f"*(Escribe el nombre exacto, por ejemplo: `P311`, `bêt`, `Mu51c`)*\n\n"
+        f"*(Ejemplo: `P311`, `bêt`, `Mu51c`)*\n\n"
         f"Se subirá a: `{HF_USER}/[tu_respuesta]`",
         parse_mode="Markdown"
     )
@@ -192,7 +199,7 @@ async def recibir_carpeta(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ Repositorio seleccionado: `{HF_USER}/{destino_repo}`\n\n"
         "🎬 **¿Qué nombre quieres ponerle al archivo final?**\n"
-        "(Ejemplo: `video_01.mp4` o `capitulo.mp4`):",
+        "(Ejemplo: `pelicula.mp4`):",
         parse_mode="Markdown"
     )
     return ESPERANDO_NOMBRE
@@ -213,10 +220,10 @@ async def recibir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     agregar_a_github(chat_id, destino_repo, url, nombre_archivo)
 
     await update.message.reply_text(
-        f"✅ **¡Todo configurado!**\n"
+        f"✅ **¡Tarea registrada!**\n"
         f"📦 Destino: `{HF_USER}/{destino_repo}`\n"
         f"🎬 Archivo: `{nombre_archivo}`\n\n"
-        f"El servidor lo descargará y te avisará cuando esté listo.",
+        f"El bot descargará los 3.4 GB y los subirá a Hugging Face en segundo plano. Te avisaré cuando termine.",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
@@ -226,11 +233,10 @@ async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 if __name__ == "__main__":
-    # Iniciar Flask y el worker de descargas en segundo plano
     threading.Thread(target=run_web, daemon=True).start()
     threading.Thread(target=worker_descargas, daemon=True).start()
     
-    print("🚀 Iniciando Bot de Telegram interactivo...")
+    print("🚀 Iniciando Bot de Telegram para archivos pesados...")
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
     conv_handler = ConversationHandler(
