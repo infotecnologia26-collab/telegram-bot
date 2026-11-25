@@ -8,15 +8,15 @@ from huggingface_hub import HfApi
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, CommandHandler, filters
 
-# Cargar y validar variables de entorno de forma segura
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+# Cargar variables con los nombres exactos de tu panel de Render
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if _admin_raw.isdigit() else 0
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "")
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
-HF_DATASET = os.environ.get("HF_DATASET", "")
+HF_DATASET = os.environ.get("HF_DATASET_REPO", "")
 
 CARPETA_ACTUAL = "peliculas"
 
@@ -191,10 +191,9 @@ async def manejar_mensaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or ADMIN_ID == 0:
-        print("❌ ERROR CRÍTICO: TELEGRAM_TOKEN o ADMIN_ID no están configurados en Render.")
+        print("❌ ERROR CRÍTICO: TELEGRAM_BOT_TOKEN o ADMIN_ID no están configurados en Render.")
     
     threading.Thread(target=run_web, daemon=True).start()
-    threading.Thread(target=worker_descargas, daemon=True).subdaemon = True if hasattr(threading.Thread, 'subdaemon') else None
     threading.Thread(target=worker_descargas, daemon=True).start()
     
     print("🚀 Iniciando Bot de Telegram...")
