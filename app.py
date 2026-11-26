@@ -21,7 +21,8 @@ _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
 GITHUB_TOKEN = "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"
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
+# CAMBIA ESTO por tu repositorio personal de GitHub (ej. "Samas21/telegram-bot")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "Samas21/telegram-bot")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "")
 BASE_HF_REPO = os.environ.get("HF_DATASET_REPO", "Samas21/bot")
