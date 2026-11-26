@@ -5,7 +5,7 @@ import requests
 from flask import Flask
 from github import Github, Auth
 from huggingface_hub import HfApi
-from telegram import UpdateF
+from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
@@ -20,7 +20,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7963428989:AAFoZk...")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-# Token de GitHub actualizado con permisos completos
+# Token de GitHub con permisos completos
 GITHUB_TOKEN = "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"
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Samas21/telegram-bot")
 
