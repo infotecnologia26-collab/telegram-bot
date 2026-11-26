@@ -256,4 +256,4 @@ if __name__ == "__main__":
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(conv_handler)
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
