@@ -5,7 +5,7 @@ import requests
 from flask import Flask
 from github import Github, Auth
 from huggingface_hub import HfApi
-from telegram import Update
+from telegram import UpdateF
 from telegram.ext import (
     ApplicationBuilder,
     ContextTypes,
