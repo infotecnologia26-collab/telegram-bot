@@ -20,7 +20,6 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7963428989:AAFoZk...")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-# Token de GitHub configurado directamente
 GITHUB_TOKEN = "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"
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
 
@@ -132,7 +131,7 @@ def worker_descargas():
                 if restantes.strip():
                     repo.update_file(file.path, f"Procesado {nombre_archivo}", restantes, file.sha)
                 else:
-                    repo.delete_file(file.path, "Cola vaciada", file.sha)
+                    repo.update_file(file.path, "Vaciar cola", "", file.sha)
 
         except Exception as e:
             if "404" not in str(e):
@@ -220,15 +219,18 @@ async def recibir_nombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
     destino_repo = context.user_data.get('destino_repo', 'bot')
 
     await update.message.reply_text("⏳ Añadiendo tarea a la cola de GitHub...")
-    agregar_a_github(chat_id, destino_repo, url, nombre_archivo)
+    try:
+        agregar_a_github(chat_id, destino_repo, url, nombre_archivo)
+        await update.message.reply_text(
+            f"✅ **¡Tarea registrada con éxito!**\n"
+            f"📦 Destino: `{HF_USER}/{destino_repo}`\n"
+            f"🎬 Archivo: `{nombre_archivo}`\n\n"
+            f"El bot descargará los 3.4 GB y los subirá a Hugging Face en segundo plano. Te avisaré cuando termine.",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error al guardar en la cola de GitHub: {e}")
 
-    await update.message.reply_text(
-        f"✅ **¡Tarea registrada!**\n"
-        f"📦 Destino: `{HF_USER}/{destino_repo}`\n"
-        f"🎬 Archivo: `{nombre_archivo}`\n\n"
-        f"El bot descargará los 3.4 GB y los subirá a Hugging Face en segundo plano. Te avisaré cuando termine.",
-        parse_mode="Markdown"
-    )
     return ConversationHandler.END
 
 async def cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
