@@ -3,7 +3,7 @@ import time
 import threading
 import requests
 from flask import Flask
-from github import Github
+from github import Github, Auth
 from huggingface_hub import HfApi
 from telegram import Update
 from telegram.ext import (
@@ -20,17 +20,13 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7963428989:AAFoZk...")
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-# Token de GitHub desde las variables de entorno de Render
+# Token y repositorio desde las variables de entorno de Render
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "Samas21/telegram-bot")
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
 BASE_HF_REPO = os.environ.get("HF_DATASET_REPO", "Samas21/bot")
 HF_USER = BASE_HF_REPO.split("/")[0] if "/" in BASE_HF_REPO else "Samas21"
-
-# Verificación en consola para depurar el 401
-print(f"🔑 GITHUB_TOKEN cargado: {'Sí (empieza con ' + GITHUB_TOKEN[:6] + '...' if GITHUB_TOKEN else '❌ NO (está vacío)'})")
-print(f"📦 GITHUB_REPO: {GITHUB_REPO}")
 
 # Estados para la conversación interactiva
 ESPERANDO_CARPETA, ESPERANDO_NOMBRE = range(2)
@@ -53,8 +49,8 @@ def worker_descargas():
         return
 
     try:
-        # Autenticación directa y universal compatible con cualquier versión de PyGithub
-        g = Github(GITHUB_TOKEN)
+        auth = Auth.Token(GITHUB_TOKEN)
+        g = Github(auth=auth)
         repo = g.get_repo(GITHUB_REPO)
     except Exception as e:
         print(f"❌ Error al autenticar en GitHub: {e}")
@@ -146,7 +142,8 @@ def worker_descargas():
 
 # --- 3. BOT DE TELEGRAM INTERACTIVO ---
 def agregar_a_github(chat_id, destino_repo, url, nombre_archivo):
-    g = Github(GITHUB_TOKEN)
+    auth = Auth.Token(GITHUB_TOKEN)
+    g = Github(auth=auth)
     repo = g.get_repo(GITHUB_REPO)
     nueva_linea = f"{chat_id}|{destino_repo}|{url}|{nombre_archivo}"
     
