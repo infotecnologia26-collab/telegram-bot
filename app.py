@@ -3,7 +3,7 @@ import time
 import threading
 import requests
 from flask import Flask
-from github import Github
+from github import Github, Auth
 from huggingface_hub import HfApi
 from telegram import Update
 from telegram.ext import (
@@ -15,17 +15,16 @@ from telegram.ext import (
     filters
 )
 
-# --- CONFIGURACIÓN BLINDADA (PEGA TUS TOKENS AQUÍ) ---
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "TU_TOKEN_DE_TELEGRAM")
+# --- CONFIGURACIÓN BLINDADA ---
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "7963428989:AAFoZk...") 
 _admin_raw = os.environ.get("ADMIN_ID", "0")
 ADMIN_ID = int(_admin_raw) if str(_admin_raw).isdigit() else 0
 
-# Pega tu token de GitHub aquí para evitar errores en Render
-GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "TU_TOKEN_DE_GITHUB")
+# Token de GitHub configurado directamente
+GITHUB_TOKEN = "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"
 GITHUB_REPO = os.environ.get("GITHUB_REPO", "infotecnologia26-collab/telegram-bot")
 
-# Pega tu token de Hugging Face aquí
-HF_TOKEN = os.environ.get("HF_TOKEN", "TU_TOKEN_DE_HUGGINGFACE")
+HF_TOKEN = os.environ.get("HF_TOKEN", "")
 BASE_HF_REPO = os.environ.get("HF_DATASET_REPO", "Samas21/bot")
 HF_USER = BASE_HF_REPO.split("/")[0] if "/" in BASE_HF_REPO else "Samas21"
 
@@ -49,8 +48,14 @@ def worker_descargas():
         print("⚠️ Faltan tokens de GitHub o Hugging Face.")
         return
 
-    g = Github(GITHUB_TOKEN)
-    repo = g.get_repo(GITHUB_REPO)
+    try:
+        auth = Auth.Token(GITHUB_TOKEN)
+        g = Github(auth=auth)
+        repo = g.get_repo(GITHUB_REPO)
+    except Exception as e:
+        print(f"❌ Error al autenticar en GitHub: {e}")
+        return
+
     hf_api = HfApi(token=HF_TOKEN)
     os.makedirs("temp_downloads", exist_ok=True)
 
@@ -82,7 +87,6 @@ def worker_descargas():
                 ruta_local = os.path.join("temp_downloads", nombre_archivo)
                 print(f"📥 Descargando archivo pesado para '{HF_USER}/{destino_repo}'...")
 
-                # Descarga robusta con streaming para archivos grandes (3.4 GB+)
                 with requests.get(url, stream=True, timeout=120) as r:
                     r.raise_for_status()
                     with open(ruta_local, "wb") as f:
@@ -93,7 +97,6 @@ def worker_descargas():
                 repo_id_destino = f"{HF_USER}/{destino_repo}"
                 print(f"☁️ Subiendo archivo pesado a Hugging Face ({repo_id_destino})...")
                 
-                # Subida oficial compatible con Hugging Face Hub
                 hf_api.upload_file(
                     path_or_fileobj=ruta_local,
                     path_in_repo=nombre_archivo,
@@ -104,7 +107,6 @@ def worker_descargas():
                 os.remove(ruta_local)
                 print(f"✅ ¡Subida completada en {repo_id_destino}!")
 
-                # Generar HTML para Blogger
                 enlace_directo = f"https://huggingface.co/datasets/{repo_id_destino}/resolve/main/{nombre_archivo}?token={HF_TOKEN}"
                 codigo_html = (
                     f'<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; border-radius: 8px;">\n'
@@ -140,7 +142,8 @@ def worker_descargas():
 
 # --- 3. BOT DE TELEGRAM INTERACTIVO ---
 def agregar_a_github(chat_id, destino_repo, url, nombre_archivo):
-    g = Github(GITHUB_TOKEN)
+    auth = Auth.Token(GITHUB_TOKEN)
+    g = Github(auth=auth)
     repo = g.get_repo(GITHUB_REPO)
     nueva_linea = f"{chat_id}|{destino_repo}|{url}|{nombre_archivo}"
     
